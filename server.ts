@@ -3,6 +3,7 @@ import http from 'http';
 import { requestHandler } from './src/handler.js';
 import logger from './src/log.js';
 import { setGlobalPassphrase } from './src/profiles/store.js';
+import { ensurePlaywrightBrowsers } from './src/browserCheck.js';
 
 // Set global passphrase for profile encryption
 const passphrase = process.env.PROFILE_PASSPHRASE || 'default-flowdesk-passphrase-2024';
@@ -11,9 +12,19 @@ logger.info('Profile encryption passphrase configured.');
 
 const PORT = 3000;
 
-const server = http.createServer(requestHandler);
+const startServer = async () => {
+    // Ensure Playwright browsers are installed (self-healing)
+    await ensurePlaywrightBrowsers();
 
-server.listen(PORT, () => {
-    logger.info(`Server listening on http://localhost:${PORT}`);
-    console.log(`> Server ready on http://localhost:${PORT}`);
+    const server = http.createServer(requestHandler);
+
+    server.listen(PORT, () => {
+        logger.info(`Server listening on http://localhost:${PORT}`);
+        console.log(`> Server ready on http://localhost:${PORT}`);
+    });
+};
+
+startServer().catch(err => {
+    logger.error(`Failed to start server: ${err}`);
+    process.exit(1);
 });

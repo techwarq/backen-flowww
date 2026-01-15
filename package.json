@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "tsx server.ts",
     "dev": "tsx watch server.ts",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "postinstall": "npx playwright install chromium"
   },
   "keywords": [
     "flipkart",
