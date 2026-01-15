@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { loadAccounts, upsertAccount, deleteAccount, updateAccountStatus, getAccount } from './accounts.js';
 import { openSession } from './session.js';
-import { pushAccounts, fetchCookiesFromCloud, pushAllCookies, pullSyncData, fetchCloudUsers, upsertCloudUser as upsertCloudUserFn, deleteCloudUser as deleteCloudUserFn, fetchActivityLogs, fetchAppErrors as fetchCloudErrors, checkCloudConnection, getSupabaseAdminClient } from './cloud.js';
+import { pushAccounts, fetchCookiesFromCloud, pushAllCookies, pullSyncData, fetchCloudUsers, upsertCloudUser as upsertCloudUserFn, deleteCloudUser as deleteCloudUserFn, fetchActivityLogs, fetchAppErrors as fetchCloudErrors, checkCloudConnection, getSupabaseAdminClient, fetchAccountsDirectly } from './cloud.js';
 import logger from './log.js';
 import { checkAccountHealth as checkHealthLogic } from './check/health.js';
 import { refreshSession as refreshSessionLogic } from './refresh/flow.js';
@@ -117,19 +117,26 @@ export const requestHandler = async (req: IncomingMessage, res: ServerResponse) 
 
         if (path === '/api/accounts' && req.method === 'GET') {
             const session = await getSession(req);
-            const data = await loadAccounts();
 
-            if (!session) {
-                // Strict: return empty if not logged in
+            // "no local directly use subase" -> always fetch from cloud
+            // If logged in, filter by user; if admin, maybe show all (or filtered if desired).
+            // Passing undefined fetches all. passing session.id filters.
+
+            let userIdToFilter: string | undefined = undefined;
+
+            if (session) {
+                if (session.role !== 'admin') {
+                    userIdToFilter = session.id;
+                }
+                // If admin, userIdToFilter remains undefined -> fetches all
+            } else {
+                // Not logged in? Return empty or public? Strict: empty.
                 return sendJson(res, 200, { accounts: [] });
             }
 
-            if (session.role === 'admin') {
-                return sendJson(res, 200, data);
-            } else {
-                const filtered = data.accounts.filter(a => a.userId === session.id);
-                return sendJson(res, 200, { accounts: filtered });
-            }
+            const data = await fetchAccountsDirectly(userIdToFilter);
+            logger.info(`[Debug] Fetching accounts for userId: ${userIdToFilter || 'ALL'}, found: ${data.accounts.length}`);
+            return sendJson(res, 200, data);
         }
 
         if (path === '/api/accounts' && req.method === 'POST') {
@@ -153,8 +160,13 @@ export const requestHandler = async (req: IncomingMessage, res: ServerResponse) 
 
             // Permission check
             if (session.role !== 'admin') {
-                const account = await getAccount(id);
-                if (account && account.userId && account.userId !== session.id) {
+                // Fetch ALL accounts for this user from cloud to check ownership
+                // Ideally getAccount should be cloud-aware too, or fetchAccountsDirectly(session.id)
+                // If the account ID is in the list returned for this user, they own it.
+                const { accounts } = await fetchAccountsDirectly(session.id);
+                const ownsAccount = accounts.some(a => a.id.toLowerCase() === id.toLowerCase());
+
+                if (!ownsAccount) {
                     return sendError(res, 403, 'Forbidden');
                 }
             }
@@ -222,9 +234,9 @@ export const requestHandler = async (req: IncomingMessage, res: ServerResponse) 
             try {
                 let result;
                 if (platform === 'flipkart') {
-                    result = await loginFlipkart({ accountId, identifier, headless: true, keepOpen: false });
+                    result = await loginFlipkart({ accountId, identifier, headless: false, keepOpen: true });
                 } else {
-                    result = await loginShopsy({ accountId, identifier, headless: true, keepOpen: false });
+                    result = await loginShopsy({ accountId, identifier, headless: false, keepOpen: true });
                 }
                 return sendJson(res, 200, result);
             } catch (error) {

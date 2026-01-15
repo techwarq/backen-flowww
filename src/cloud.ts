@@ -489,7 +489,7 @@ export async function pullSyncData() {
                 // Re-importing or using the helper logic:
                 // backend/data/cookies/{id}_{platform}.json
                 const localPath = path.join(path.dirname(getCookieFilePath('dummy', 'flipkart')), `${accId}_${platform}.json`);
-                await fs.writeJSON(localPath, grouped[key], { spaces: 2 });
+                await fs.outputJSON(localPath, grouped[key], { spaces: 2 });
             }
             logger.info(`[Cloud] Pulled cookies for ${Object.keys(grouped).length} sessions.`);
         }
@@ -705,5 +705,46 @@ export async function deleteCloudAccount(accountId: string) {
     } catch (e: any) {
         logger.error(`[Cloud] Deletion failed for ${id}: ${e.message}`);
         throw e;
+    }
+}
+
+/**
+ * Fetch accounts directly from Cloud (Supabase)
+ * Bypasses local file system, allows filtering by userId
+ */
+export async function fetchAccountsDirectly(userId?: string) {
+    const client = getSupabaseAdminClient();
+    if (!client) return { accounts: [] };
+
+    try {
+        let query = client.from('accounts').select('*');
+
+        // If userId is provided, filter. 
+        // Note: Admin might pass userId to filter for specific user, 
+        // OR we might want to list all if it's admin. Use logic in handler.
+        if (userId) {
+            query = query.eq('user_id', userId);
+        }
+
+        const { data, error } = await query;
+        logger.info(`[Debug] fetchAccountsDirectly query for userId=${userId}, returned ${data?.length || 0} rows`);
+        if (error) throw error;
+
+        if (data) {
+            const accounts = data.map((row: any) => ({
+                id: row.id,
+                platform: row.platform,
+                identifier: row.identifier,
+                status: row.status,
+                lastLoginAt: row.last_login_at,
+                userId: row.user_id,
+                ...row.details
+            }));
+            return { accounts };
+        }
+        return { accounts: [] };
+    } catch (e: any) {
+        logger.error(`[Cloud] Direct fetch failed: ${e.message}`);
+        return { accounts: [] };
     }
 }
