@@ -1,7 +1,7 @@
 {
     "rewrites": [
         {
-            "source": "/api/(.*)",
+            "source": "/(.*)",
             "destination": "/api/index.ts"
         }
     ],
@@ -9,6 +9,5 @@
         "api/index.ts": {
             "maxDuration": 60
         }
-    },
-    "outputDirectory": "dist"
+    }
 }
