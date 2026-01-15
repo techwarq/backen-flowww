@@ -219,17 +219,12 @@ export const requestHandler = async (req: IncomingMessage, res: ServerResponse) 
             const body = await parseBody(req);
             const { accountId, identifier, platform } = body;
 
-            // Note: login functions launch browsers, check environment
-            if (process.env.VERCEL) {
-                return sendError(res, 400, 'Cannot launch browsers in Vercel environment.');
-            }
-
             try {
                 let result;
                 if (platform === 'flipkart') {
-                    result = await loginFlipkart({ accountId, identifier, headless: false, keepOpen: true });
+                    result = await loginFlipkart({ accountId, identifier, headless: true, keepOpen: false });
                 } else {
-                    result = await loginShopsy({ accountId, identifier, headless: false, keepOpen: true });
+                    result = await loginShopsy({ accountId, identifier, headless: true, keepOpen: false });
                 }
                 return sendJson(res, 200, result);
             } catch (error) {
@@ -239,9 +234,6 @@ export const requestHandler = async (req: IncomingMessage, res: ServerResponse) 
 
         // POST /api/session (Open Session)
         if ((path === '/api/session' || path === '/api/session/open') && req.method === 'POST') {
-            if (process.env.VERCEL) {
-                return sendError(res, 400, 'Cannot open browser sessions in Vercel environment.');
-            }
             const body = await parseBody(req);
             const { accountId, platform } = body;
             try {
@@ -254,9 +246,6 @@ export const requestHandler = async (req: IncomingMessage, res: ServerResponse) 
 
         // POST /api/terminate-all
         if (path === '/api/terminate-all' && req.method === 'POST') {
-            if (process.env.VERCEL) {
-                return sendJson(res, 200, { success: true, message: 'No browsers to terminate in Vercel' });
-            }
             await browsers.closeAll();
             return sendJson(res, 200, { success: true });
         }
